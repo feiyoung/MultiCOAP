@@ -1,0 +1,30 @@
+Package: MultiCOAP
+Type: Package
+Title: High-Dimensional Covariate-Augmented Overdispersed Multi-Study Poisson Factor Model
+Version: 1.1
+Date: 2024-02-25
+Authors@R: 
+    c(person(given = "Wei",
+             family = "Liu",
+             role = c("aut", "cre"),
+             email = "liuweideng@gail.com"),
+      person(given = "Qingzhi",
+             family = "Zhong",
+             role = c("aut")))
+Author: Wei Liu [aut, cre], Qingzhi Zhong [aut]
+Maintainer: Wei Liu <liuweideng@gail.com>
+Description: Jointly perform a high-dimensional multi-study Poisson factor analysis and estimate a large coefficient matrix for overdispersed count data. 
+License: GPL-3
+Imports: Rcpp (>= 1.0.10)
+URL: https://github.com/feiyoung/COAP
+BugReports: https://github.com/feiyoung/COAP/issues
+Suggests: 
+    knitr,
+    rmarkdown
+LinkingTo: 
+    Rcpp,
+    RcppArmadillo
+VignetteBuilder: 
+    knitr
+Encoding: UTF-8
+RoxygenNote: 7.1.2
