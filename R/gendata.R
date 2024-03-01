@@ -1,27 +1,38 @@
 #' Generate simulated data
 #' @description Generate simulated data from covariate-augmented Poisson factor models
 #' @param seed a postive integer, the random seed for reproducibility of data generation process.
-#' @param n a postive integer, specify the sample size. 
+#' @param nvec a  vector with postive integers, specify the sample size in each study/source.
+#' @param a_interval a numeric vector with two elements, specify the range of offset term values in each study. 
 #' @param p a postive integer, specify the dimension of count variables.
 #' @param d a postive integer,  specify the dimension of covariate matrix.
-#' @param q a postive integer,  specify the number of factors.
+#' @param q a postive integer,  specify the number of study-shared factors.
+#' @param qs a  vector with postive integers, specify the number of study-specified factors.
 #' @param rank0 a postive integer, specify the rank of the coefficient matrix.
-#' @param rho a numeric vector with length 2 and positive elements, specify the signal strength of regression coefficient and loading matrix, respectively. 
+#' @param rho a numeric vector with length 3 and positive elements, specify the signal strength of regression coefficient and loading matrices, respectively. 
 #' @param sigma2_eps a positive real, the variance of overdispersion error.
-#' @return return a list including the following components: (1) X, the high-dimensional count matrix; (2) Z, the high-dimensional covriate matrix; (3) bbeta0, the low-rank large coefficient matrix; (4) B0, the loading matrix; (5) H0, the factor matrix; (6) rank: the true rank of bbeta0; (7) q: the true number of factors.
+#' @param seed.beta a postive integer, the random seed for fixing the regression coefficient matrix and loading matrix generation.
+#' @return return a list including the following components: 
+#' (1) Xlist, the list consisting of high-dimensional count matrices from multiple studies; (2) aList: the known normalization term (offset) for each study; (3) Zlist, the list consisting of covariate matrix;
+#' (4) bbeta0, the true regression coefficient matrix; (5) A0, the loading matrix of study-shared factors;  (6) Blist, the list consisting of loading matrices of study-specified factors;
+#' (7)lambdavec, the variance vector of the random error vector; (8)Flist, the list composed by study-shared factor matrices; (9) Hlist, the list composed by study-specified factor matrices; 
+#' (10) rank0, the rank of underlying regression coefficient matrix;  (11) q, the number of study-shared factors; (12)qs, the numbers of study-specified factors.
 #' @details None
-#' @seealso \code{\link{RR_COAP}}
+#' @seealso None
 #' @references None
 #' @export
 #' @importFrom  MASS mvrnorm
-#'
-#'
+#' @importFrom stats coef lm resid rnorm rpois runif
+#' @examples 
+#' seed <- 1; nvec <- c(100,300); p<- 300;
+#' d <- 3; q<- 3; qs <- rep(2,2)
+#' datlist <- gendata_simu_multi2(seed=seed, nvec=nvec, p=p, d=d, q=3, qs=qs)
+#' str(datlist)
 
 
 ### Add the different a_(si) in the model
 gendata_simu_multi2 <- function (seed = 1, nvec = c(100,300), a_interval=c(0,1), p = 50, d=3, q = 3,
                                  qs= rep(2, length(nvec)),
-                                 rank0=3, rho = c(rhoA=1, rhoB= 1, rhoZ=1), sigma2_eps=1){
+                                 rank0=3, rho = c(rhoA=1, rhoB= 1, rhoZ=1), sigma2_eps=1, seed.beta=1){
   # seed = 1; nvec = c(100,300); p = 50; d=3; q = 3
   # qs= rep(2, length(nvec))
   # rank0=3; rho = c(1, 1, 0.5); sigma2_eps=0.1;a_interval=c(0,1)
@@ -30,7 +41,7 @@ gendata_simu_multi2 <- function (seed = 1, nvec = c(100,300), a_interval=c(0,1),
   if(length(nvec)<2) stop("nvec must have at least two elements!")
   S <- length(nvec)
   
-  require(MASS)
+  #require(MASS)
   if(rank0<=1) stop("rank0 must be greater than 1!")
   cor.mat<-function (p, rho, type = "toeplitz") {
     if (p == 1) 
@@ -64,14 +75,14 @@ gendata_simu_multi2 <- function (seed = 1, nvec = c(100,300), a_interval=c(0,1),
   factor_term_A<- rho[1]
   factor_term_B <- rho[2]
   factor_term_z <- rho[3]
-  set.seed(1) 
+  set.seed(seed.beta) 
   rank_true <- rank0
   bbeta0 <- t(matrix(rnorm(d*rank_true), d, rank_true) %*% matrix(rnorm(rank_true* p), rank_true, p)) / p *4 * factor_term_z
   
   Blist <- list()
   IC <- 'Orth'
   if(IC=='Orth'){
-    set.seed(1)
+    set.seed(seed.beta)
     Ztmp <- matrix(rnorm(p * (q+qs[1])), p, (q+qs[1]))
     A <- qr(Ztmp)
     A1 <- qr.Q(A) %*% Diag(seq(q+qs[1], 1, length=q+qs[1]))
@@ -134,7 +145,7 @@ gendata_simu_multi2 <- function (seed = 1, nvec = c(100,300), a_interval=c(0,1),
 ### Conder the absolute value of counts
 gendata_simu_multi1 <- function (seed = 1, nvec = c(100,300), p = 50, d=3, q = 3,
                                  qs= rep(2, length(nvec)),
-                                 rank0=3, rho = c(rhoA=1, rhoB= 1, rhoZ=1), sigma2_eps=1){
+                                 rank0=3, rho = c(rhoA=1, rhoB= 1, rhoZ=1), sigma2_eps=1,seed.beta=1){
   ## rho = c(rhoA=1, rhoB= 1, rhoZ=1) control the signal strength of A, B and Z
   # seed = 1; nvec = c(100,300); p = 50; d=3; q = 3
   # qs= rep(2, length(nvec))
@@ -144,7 +155,7 @@ gendata_simu_multi1 <- function (seed = 1, nvec = c(100,300), p = 50, d=3, q = 3
   if(length(nvec)<2) stop("nvec must have at least two elements!")
   S <- length(nvec)
   
-  require(MASS)
+  #require(MASS)
   if(rank0<=1) stop("rank0 must be greater than 1!")
   cor.mat<-function (p, rho, type = "toeplitz") {
     if (p == 1) 
@@ -178,14 +189,14 @@ gendata_simu_multi1 <- function (seed = 1, nvec = c(100,300), p = 50, d=3, q = 3
   factor_term_A<- rho[1]
   factor_term_B <- rho[2]
   factor_term_z <- rho[3]
-  set.seed(1) 
+  set.seed(seed.beta) 
   rank_true <- rank0
   bbeta0 <- t(matrix(rnorm(d*rank_true), d, rank_true) %*% matrix(rnorm(rank_true* p), rank_true, p)) / p *4 * factor_term_z
   
   Blist <- list()
   IC <- 'Orth'
   if(IC=='Orth'){
-    set.seed(1)
+    set.seed(seed.beta)
     Ztmp <- matrix(rnorm(p * (q+qs[1])), p, (q+qs[1]))
     A <- qr(Ztmp)
     A1 <- qr.Q(A) %*% Diag(seq(q+qs[1], 1, length=q+qs[1]))
@@ -237,7 +248,7 @@ gendata_simu_multi1 <- function (seed = 1, nvec = c(100,300), p = 50, d=3, q = 3
 
 gendata_simu_multi <-function (seed = 1, nvec = c(100,300), p = 50, d=3, q = 3,
                                        qs= rep(2, length(nvec)),
-                                       rank0=3, rho = c(1, 1), sigma2_eps=1){
+                                       rank0=3, rho = c(1, 1), sigma2_eps=1,seed.beta=1){
   # seed = 1; nvec = c(100,300); p = 50; d=3; q = 3
   # qs= rep(2, length(nvec))
   # rank0=3; rho = c(1, 1); sigma2_eps=0.1;
@@ -246,7 +257,7 @@ gendata_simu_multi <-function (seed = 1, nvec = c(100,300), p = 50, d=3, q = 3,
   if(length(nvec)<2) stop("nvec must have at least two elements!")
   S <- length(nvec)
   
-  require(MASS)
+  # require(MASS)
   if(rank0<=1) stop("rank0 must be greater than 1!")
   cor.mat<-function (p, rho, type = "toeplitz") {
     if (p == 1) 
@@ -280,14 +291,14 @@ gendata_simu_multi <-function (seed = 1, nvec = c(100,300), p = 50, d=3, q = 3,
   
   factor_term_B <- rho[1]
   factor_term_z <- rho[2]
-  set.seed(1) 
+  set.seed(seed.beta) 
   rank_true <- rank0
   bbeta0 <- t(matrix(rnorm(d*rank_true), d, rank_true) %*% matrix(rnorm(rank_true* p), rank_true, p)) / p *4 * factor_term_z
   
   Blist <- list()
   IC <- 'Orth'
   if(IC=='Orth'){
-    set.seed(1)
+    set.seed(seed.beta)
     Ztmp <- matrix(rnorm(p * (q+qs[1])), p, (q+qs[1]))
     A <- qr(Ztmp)
     A1 <- qr.Q(A) %*% Diag(seq(q+qs[1], 1, length=q+qs[1]))
