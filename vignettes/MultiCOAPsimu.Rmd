@@ -1,0 +1,267 @@
+---
+title: 'Example of MultiCOAP'
+author: "Wei Liu"
+date: "`r Sys.Date()`"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Example of MultiCOAP}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+This vignette introduces the usage of MultiCOAP for the analysis of high-dimensional count data with additional high-dimensional covariates, by comparison with other methods. 
+
+
+The package can be loaded with the command, and define some metric functions:
+```{r  eval = TRUE}
+library(MultiCOAP)
+library(GFM)
+normvec <- function(x) sqrt(sum(x^2)/ length(x))
+
+trace_statistic_fun <- function(H, H0){
+  
+  tr_fun <- function(x) sum(diag(x))
+  mat1 <- t(H0) %*% H %*% qr.solve(t(H) %*% H) %*% t(H) %*% H0
+  
+  tr_fun(mat1) / tr_fun(t(H0) %*% H0)
+  
+}
+trace_list_fun <- function(Hlist, H0list){
+  trvec <- rep(NA, length(Hlist))
+  for(i in seq_along(trvec)){
+    trvec[i] <- trace_statistic_fun(Hlist[[i]], H0list[[i]])
+  }
+  return(mean(trvec))
+}
+```
+
+## Generate the simulated data
+First, we generate the data simulated data. 
+```{r  eval = TRUE}
+p <- 100; nvec <- c(200,300); d <- 10
+methodNames <- c("MultiCOAP", "COAP", "MSFRlog", "MSFR")
+metricMat <- matrix(NA, nrow=length(methodNames), ncol=6)
+colnames(metricMat) <- c('A_tr', 'B_tr', 'beta_er', 'F_tr', 'H_tr', 'Time')
+row.names(metricMat) <- methodNames
+
+q <- 3; qs <- c(2,2); rank0 <- 2
+rho<-c(2,3.5,0.1) 
+datList <- gendata_simu_multi2(seed = 1,nvec=nvec, p=p, d= d, 
+                                 q=q, qs=qs, rank0=rank0,rho=rho,sigma2_eps=1)
+  
+
+```
+Fit the MultiCOAP model using the function `MultiCOAP()` in the R package `MultiCOAP`. Users can use `?MultiCOAP` to see the details about this function. For two matrices $\widehat D$ and $D$, we use trace statistic to measure their similarity.  The trace statistic  ranges from 0 to 1,  with higher values indicating better performance. To gauge the estimation accuracy of $\beta_0$, we employ the mean estimation error (Er).
+```{r  eval = TRUE}
+
+  XcList <- datList$Xlist; 
+  ZList <- datList$Zlist; 
+  res <- MultiCOAP(XcList, ZList, q=q, qs=qs,rank_use = rank0,init="MSFRVI")
+  #str(res)
+  metricMat["MultiCOAP",'Time'] <- res$time.use
+  metricMat["MultiCOAP",'A_tr'] <- trace_statistic_fun(res$A, datList$A0)
+  metricMat["MultiCOAP",'B_tr'] <- trace_list_fun(res$B, datList$Blist0)
+  metricMat["MultiCOAP",'F_tr'] <- trace_list_fun(res$F, datList$Flist)
+  metricMat["MultiCOAP",'H_tr'] <- trace_list_fun(res$H, datList$Hlist)
+  metricMat["MultiCOAP",'beta_er'] <- normvec(datList$bbeta0-res$bbeta)
+
+```
+
+## Compare with other methods
+
+We compare MultiCOAP with various prominent methods in the literature. They are (1) covariate-augmented Possion factor model (COAP) that disregards the study-specified factors and only estimates the loadings and factors shared across studies, implemented in the R package `COAP`; (2) newly developed multi-study factor regression model (MSFR) with/without log(1+x) normalization for the observed count data. 
+
+(1). First, we implemented covariate-augmented Possion factor model (COAP) and record the metrics that measure the estimation accuracy and computational cost.
+
+```{r  eval = TRUE}
+mat2list <-function(z_int, nvec){
+  
+  zList_int <- list()
+  istart <- 1
+  for(i in 1:length(nvec)){
+    
+    zList_int[[i]] <- z_int[istart: sum(nvec[1:i]), ]
+    istart <- istart + nvec[i]
+  }
+  return(zList_int)
+}
+
+COAP_run <- function(XcList, ZList, q, rank_use, aList=NULL, ...){
+  
+  require(COAP)
+  nvec <- sapply(XcList, nrow)
+  if(is.null(aList)){
+    aList <- lapply(nvec, function(n1) rep(1, n1))
+  }
+  
+  Xmat <- Reduce(rbind, XcList); Zmat <- Reduce( rbind, ZList)
+  avec <- unlist(aList)
+  tic <- proc.time()
+  res_coap <- RR_COAP(Xmat, multiFac= avec, Z = Zmat,  q=q, rank_use=rank_use, ...)
+  toc <- proc.time()
+  res_coap$Flist <- mat2list(res_coap$H, nvec)
+  res_coap$time.use <- toc[3] - tic[3]
+  return(res_coap)
+}
+
+res_coap <- COAP_run(XcList, ZList, q=q,rank_use = rank0)
+
+metricMat["COAP",'Time']  <- res_coap$time.use
+metricMat["COAP",'A_tr']  <- trace_statistic_fun(res_coap$B, datList$A0)
+metricMat["COAP",'F_tr']  <- trace_list_fun(res_coap$Flist, datList$Flist)
+metricMat["COAP",'beta_er']  <- normvec(datList$bbeta0-res_coap$bbeta)
+  
+```
+
+(2). Then, we implemented multi-study factor regression model (MSFR) with/without log(1+x) normalization for the observed count data.
+```{r  eval = TRUE}
+MSFR_run <- function(XcList, ZList, q, qs, maxIter=1e4, log.transform=FALSE, truncted=NULL, load.source=FALSE, dir.source=NULL){
+  
+  require(MSFA)
+  require(psych)
+  if(!load.source){
+    source(paste0(dir.source, "MSFR_main_R_MSFR_V1.R"))
+  }
+  #fa <- psych::fa
+  B_s <- ZList
+  if(log.transform){
+    X_s <- lapply(XcList, function(x) log(1+x))
+  }else{
+    X_s <- XcList #
+  }
+  if(!is.null(truncted)){
+    replace_x <- function(x, truncted){
+      x[x>truncted] <- truncted
+      x[x<-truncted] <- -truncted
+      return(x)
+    }
+    X_s <- lapply(X_s, replace_x, truncted=truncted)
+  }
+  t1<- proc.time()
+  test <- start_msfa(X_s, B_s, 5, k=q, j_s=qs, constraint = "block_lower2", method = "adhoc")
+  # EM_beta <- ecm_msfa(X_s, B_s, start=test, trace = FALSE, nIt=maxIter, constraint = "block_lower1")
+  EM_beta <- ecm_msfa(X_s, B_s, start=test, trace = FALSE, nIt=maxIter)
+  t2<- proc.time()
+  EM_beta$Flist <- lapply(EM_beta$E_f, t)
+  EM_beta$Hlist <- lapply(EM_beta$E_l, t)
+  EM_beta$time.use <- t2[3] - t1[3]
+  EM_beta$lambdavec <- sapply(EM_beta$psi_s,mean)
+  return(EM_beta)
+}
+dir.source <- 'D:\\Working\\Research paper\\idea\\MultiPoisFactor\\Rpackage\\MultiCOAP\\simuCodes\\'
+
+res_msfa <- MSFR_run(XcList, ZList, q=q, qs=qs, maxIter=1e3, log.transform=TRUE, dir.source = dir.source)
+metricMat["MSFRlog",'Time'] <- res_msfa$time.use
+metricMat["MSFRlog",'A_tr'] <- trace_statistic_fun(res_msfa$Phi, datList$A0)
+metricMat["MSFRlog",'B_tr']  <- trace_list_fun(res_msfa$Lambda_s, datList$Blist0)
+metricMat["MSFRlog",'F_tr'] <- trace_list_fun(res_msfa$Flist, datList$Flist)
+metricMat["MSFRlog",'H_tr'] <- trace_list_fun(res_msfa$Hlist, datList$Hlist)
+metricMat["MSFRlog",'beta_er'] <- normvec(res_msfa$beta-datList$bbeta0)
+  
+res_msfa2 <- MSFR_run(XcList, ZList, q=q, qs=qs,truncted=500, maxIter=1e3, log.transform=FALSE, dir.source = dir.source)
+metricMat["MSFR",'Time'] <- res_msfa2$time.use
+metricMat["MSFR",'A_tr'] <- trace_statistic_fun(res_msfa2$Phi, datList$A0)
+metricMat["MSFR",'B_tr']  <- trace_list_fun(res_msfa2$Lambda_s, datList$Blist0)
+metricMat["MSFR",'F_tr'] <- trace_list_fun(res_msfa2$Flist, datList$Flist)
+metricMat["MSFR",'H_tr'] <- trace_list_fun(res_msfa2$Hlist, datList$Hlist)
+metricMat["MSFR",'beta_er'] <- normvec(res_msfa2$beta-datList$bbeta0)
+    
+```
+
+## Visualize the comparison of performance
+
+Next, we summarized the metrics for MultiCOAP and other compared methods in a data.frame object.
+```{r  eval = TRUE}
+
+
+dat_metric <- data.frame(metricMat)
+dat_metric$Method <- factor(row.names(dat_metric), levels=row.names(dat_metric))
+```
+
+Plot the results for MultiCOAP and other methods, which suggests that MultiCOAP achieves better estimation accuracy for the quantiites of interest.
+```{r  eval = TRUE, fig.width=13, fig.height=5}
+library(cowplot)
+library(ggplot2)
+p1 <- ggplot(data=subset(dat_metric, !is.na(A_tr)), aes(x= Method, y=A_tr, fill=Method)) + geom_bar(stat="identity") + xlab(NULL) + scale_x_discrete(breaks=NULL) + theme_bw(base_size = 16)
+p2 <- ggplot(data=subset(dat_metric, !is.na(F_tr)), aes(x= Method, y=F_tr, fill=Method)) + geom_bar(stat="identity") + xlab(NULL) + scale_x_discrete(breaks=NULL)+ theme_bw(base_size = 16)
+p3 <- ggplot(data=subset(dat_metric, !is.na(B_tr)), aes(x= Method, y=B_tr, fill=Method)) + geom_bar(stat="identity") + xlab(NULL) + scale_x_discrete(breaks=NULL) + theme_bw(base_size = 16)
+p4 <- ggplot(data=subset(dat_metric, !is.na(H_tr)), aes(x= Method, y=H_tr, fill=Method)) + geom_bar(stat="identity") + xlab(NULL) + scale_x_discrete(breaks=NULL)+ theme_bw(base_size = 16)
+p5 <- ggplot(data=subset(dat_metric, !is.na(beta_er)), aes(x= Method, y=beta_er, fill=Method)) + geom_bar(stat="identity") + xlab(NULL) + scale_x_discrete(breaks=NULL)+ theme_bw(base_size = 16)
+p6 <- ggplot(data=subset(dat_metric, !is.na(Time)), aes(x= Method, y=Time, fill=Method)) + geom_bar(stat="identity") + xlab(NULL) + scale_x_discrete(breaks=NULL)+ theme_bw(base_size = 16)
+plot_grid(p1,p2,p3, p4, p5, p6, nrow=2, ncol=3)
+```
+
+
+## Select the parameters
+
+We applied the proposed 'CUP' method to select the number of factors. The results showed that  the CUP method has the potential to identify the true values.
+```{r  eval = TRUE}
+selectQ <- function(res, tune.coef.rank=FALSE,  threshold=c(1e-1, 1e-2, 1e-2), 
+                    method=c("var.prop", "SVR"), upper.var.prop=0.95){
+  
+  method <- match.arg(method)
+  qlist <- list()
+  
+  d_svdA <- svd(res$A)$d
+  # 
+  if(method=='SVR'){
+    d_svdA <- d_svdA[d_svdA>threshold[1]]
+    qq <- length(d_svdA)
+    if(qq>1){
+      rsigs <- d_svdA[-qq]/d_svdA[-1]
+      qlist$q <-  which.max(rsigs)
+    }else{
+      qlist$q <- 1
+    }
+  }else if(method=='var.prop'){
+    prop.vec <- cumsum(d_svdA^2)/sum(d_svdA^2)
+    qlist$q <- which(prop.vec> upper.var.prop)[1]
+  }
+  
+  n_qs <- length(res$B)
+  qvec <- rep(NA, n_qs)
+  names(qvec) <- paste0("qs", 1:n_qs)
+  for(i in 1:n_qs){
+    # i <-1 
+    d_svdB1 <- svd(res$B[[i]])$d
+    # 
+    if(method=='SVR'){
+      d_svdB1 <- d_svdB1[d_svdB1>threshold[2]]
+      qq1 <- length(d_svdB1)
+      if(qq1>1){
+        rsigB1 <- d_svdB1[-qq1]/d_svdB1[-1]
+        qvec[i] <-  which.max(rsigB1)
+      }else{
+        qvec[i] <-  1
+      }
+    }else if(method=='var.prop'){
+      prop.vec <- cumsum(d_svdB1^2)/sum(d_svdB1^2)
+      qvec[i] <- which(prop.vec> upper.var.prop)[1]
+    }
+  }
+  qlist$qs <- qvec
+  return(qlist)
+}
+
+XcList <- datList$Xlist; 
+ZList <- datList$Zlist; 
+res <- MultiCOAP(XcList, ZList, q=q, qs=qs,rank_use = rank0,init="MSFRVI", verbose = FALSE)
+hq.list <- selectQ(res, method='var.prop')
+message("hq = ", hq.list$q, " VS true q = ", q)
+message("hqs.vec = ", paste(hq.list$qs, collapse =", "), " VS true qs.vec = ", paste(qs, collapse =", "))
+```
+
+
+<details>
+<summary>**Session Info**</summary>
+```{r}
+sessionInfo()
+```
+</details>
