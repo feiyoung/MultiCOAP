@@ -14,11 +14,9 @@ We introduce a novel modeling strategy for analyzing single-cell multi-omics dat
 
 
 
-<<<<<<< HEAD
 Check out our [JCGS paper](https://doi.org/10.1080/10618600.2026.2652931)  and  [Package Website](https://feiyoung.github.io/MultiCOAP/index.html) for a more complete description of the methods and analyses. 
 =======
 Check out the  [Package Website](https://feiyoung.github.io/MultiCOAP/index.html) for a more complete description of the methods and analyses. 
->>>>>>> 0acf705cc5106beacc599af6ac9bacfe95ef852a
 
 # Installation
 "MultiCOAP" depends on the 'Rcpp' and 'RcppArmadillo' package, which requires appropriate setup of computer. For the users that have set up system properly for compiling C++ files, the following installation command will work.
