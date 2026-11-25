@@ -13,10 +13,8 @@ High-dimensional covariate-augmented multi-study nonlinear factor model
 We introduce a novel modeling strategy for analyzing single-cell multi-omics data sourced from various studies. Our approach is driven by the surge in single-cell multi-omics research in biological and medical fields, exemplified by the RNA-protein simultaneous sequencing case-control study on human peripheral blood mononuclear cells (PBMC). To capture the nonlinear relationships between diverse molecular types, including genes and proteins, and to identify both study-shared and study-specific features while accounting for the count nature of the data, we propose a multi-study nonlinear factor model incorporating study-shared and study-specific factors, along with augmented omics variables as covariates. 
 
 
-
+=========================================================================
 Check out our [JCGS paper](https://doi.org/10.1080/10618600.2026.2652931)  and  [Package Website](https://feiyoung.github.io/MultiCOAP/index.html) for a more complete description of the methods and analyses. 
-=======
-Check out the  [Package Website](https://feiyoung.github.io/MultiCOAP/index.html) for a more complete description of the methods and analyses. 
 
 # Installation
 "MultiCOAP" depends on the 'Rcpp' and 'RcppArmadillo' package, which requires appropriate setup of computer. For the users that have set up system properly for compiling C++ files, the following installation command will work.
